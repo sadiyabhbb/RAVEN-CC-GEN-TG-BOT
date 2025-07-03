@@ -10,12 +10,106 @@ const bot = new TelegramBot(token, {
   polling: true,
   fileDownloadOptions: {
     headers: {
-      'User -Agent': 'Telegram Bot'
+      'User-Agent': 'Telegram Bot'
     }
   }
 });
 
-// ✅ Helper Functions
+// ✅ Local BIN Database (Fallback)
+const localBinDatabase = {
+  '515462': { bank: 'MASTERCARD', country: 'USA', type: 'CREDIT', scheme: 'MASTERCARD' },
+  '471612': { bank: 'VISA', country: 'Germany', type: 'CREDIT', scheme: 'VISA' },
+  '453245': { bank: 'VISA', country: 'UK', type: 'DEBIT', scheme: 'VISA' },
+  // Add more BINs as needed
+};
+
+// ✅ Bin Lookup Function
+async function getBinInfo(bin) {
+  const shortBin = bin.substring(0, 6);
+  
+  // First check local database
+  if (localBinDatabase[shortBin]) {
+    return localBinDatabase[shortBin];
+  }
+
+  try {
+    const response = await axios.get(`https://lookup.binlist.net/${bin}`);
+    return {
+      bank: response.data.bank?.name || `${shortBin} BANK`,
+      country: response.data.country?.name || 'INTERNATIONAL',
+      emoji: response.data.country?.emoji || '🌍',
+      scheme: response.data.scheme?.toUpperCase() || 'UNKNOWN',
+      type: response.data.type?.toUpperCase() || 'UNKNOWN'
+    };
+  } catch (error) {
+    return {
+      bank: `${shortBin} BANK`,
+      country: 'INTERNATIONAL',
+      emoji: '🌍',
+      scheme: 'UNKNOWN',
+      type: 'UNKNOWN'
+    };
+  }
+}
+
+// ✅ New Message Formatting Function
+function createCCMessage(bin, binInfo, cards) {
+  // Emoji mapping
+  const countryEmojis = {
+    'USA': '🇺🇸',
+    'Germany': '🇩🇪',
+    'UK': '🇬🇧',
+    'France': '🇫🇷',
+    'INTERNATIONAL': '🌍'
+  };
+  
+  // Currency symbols
+  const currencySymbols = {
+    'USA': '$',
+    'Germany': '€',
+    'UK': '£',
+    'France': '€',
+    'INTERNATIONAL': '$'
+  };
+
+  const currency = currencySymbols[binInfo.country] || '$';
+  const emoji = countryEmojis[binInfo.country] || '🌍';
+  
+  const message = `
+🟢 *CC GENERATOR SUCCESS* 🟢
+
+▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+🔹 *BIN Details:*
+├ Bank: ${binInfo.bank}
+├ Country: ${binInfo.country} ${emoji}
+├ Type: ${binInfo.type}
+└ Scheme: ${binInfo.scheme}
+
+🔹 *Pricing:*
+├ Monthly: ${currency}9.99
+├ Yearly: ${currency}99.99
+└ Trial: 1 Month Free
+
+▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+📋 *Generated Cards* (Tap to copy):
+  
+${cards.map((card, index) => `🔸 ${index+1}. \`${card}\``).join('\n')}
+
+▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
+⚠️ *Disclaimer:* 
+Generated cards are for testing purposes only
+`;
+
+  return {
+    text: message,
+    options: {
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true
+    }
+  };
+}
+
+// ✅ Luhn Check Algorithm
 function luhnCheck(num) {
   let arr = (num + '').split('').reverse().map(x => parseInt(x));
   let lastDigit = arr.shift();
@@ -24,6 +118,7 @@ function luhnCheck(num) {
   return (sum + lastDigit) % 10 === 0;
 }
 
+// ✅ Card Generator
 function generateValidCard(bin) {
   let cardNumber;
   do {
@@ -35,25 +130,7 @@ function generateValidCard(bin) {
   const year = String(new Date().getFullYear() + Math.floor(Math.random() * 5)).slice(-2);
   const cvv = String(Math.floor(100 + Math.random() * 900));
   
-  return `${cardNumber}|${month}|20${year}|${cvv}`;
-}
-
-// ✅ Message Formatting Function
-function createCCMessage(bin, binInfo, cards) {
-  const message = `💳 Generated CC (${bin})\n\n` +
-                  `🏦 Bank: ${binInfo.bank}\n` +
-                  `🌎 Country: ${binInfo.country} ${binInfo.emoji}\n` +
-                  `🔖 Type: ${binInfo.type}\n\n` +
-                  `📋 Tap any card below to copy:\n\n` +
-                  cards.map(card => `\`${card}\``).join('\n'); // Use backticks for code formatting
-
-  return {
-    text: message,
-    options: {
-      parse_mode: 'Markdown', // Use Markdown for formatting
-      disable_web_page_preview: true
-    }
-  };
+  return `${cardNumber}|${month}|${year}|${cvv}`;
 }
 
 // ✅ Command Handlers
@@ -105,29 +182,7 @@ bot.onText(/\/gen (.+)/, async (msg, match) => {
   await bot.sendMessage(chatId, message.text, message.options);
 });
 
-// ✅ Bin Info Lookup
-async function getBinInfo(bin) {
-  try {
-    const response = await axios.get(`https://lookup.binlist.net/${bin}`);
-    return {
-      bank: response.data.bank?.name || "UNKNOWN BANK",
-      country: response.data.country?.name || "UNKNOWN",
-      emoji: response.data.country?.emoji || "",
-      scheme: response.data.scheme?.toUpperCase() || "UNKNOWN",
-      type: response.data.type?.toUpperCase() || "UNKNOWN"
-    };
-  } catch (error) {
-    return {
-      bank: "UNKNOWN BANK",
-      country: "UNKNOWN",
-      emoji: "",
-      scheme: "UNKNOWN",
-      type: "UNKNOWN"
-    };
-  }
-}
-
-// ✅ HTTP Server
+// ✅ HTTP Server (for health checks)
 http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/html' });
   res.end(`
