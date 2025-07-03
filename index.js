@@ -6,7 +6,7 @@ const TelegramBot = require('node-telegram-bot-api');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Dummy route for Render to keep server alive
+// Dummy route to keep the bot alive on Render
 app.get('/', (req, res) => {
   res.send('🤖 Telegram Bot is Running!');
 });
@@ -15,9 +15,10 @@ app.listen(PORT, () => {
   console.log(`🌐 Server running at http://localhost:${PORT}`);
 });
 
-// Telegram bot setup
+// === Initialize Telegram Bot ===
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 
+// === BIN Lookup ===
 async function getDetailedBinInfo(bin) {
   try {
     const response = await axios.get(`https://lookup.binlist.net/${bin}`, {
@@ -42,6 +43,7 @@ async function getDetailedBinInfo(bin) {
   }
 }
 
+// === Card Generator ===
 function generateValidCard(bin) {
   let cardNumber;
   do {
@@ -56,6 +58,7 @@ function generateValidCard(bin) {
   return `\`${cardNumber}|${month}|${year}|${cvv}\``;
 }
 
+// === Luhn Check ===
 function luhnCheck(cardNumber) {
   let sum = 0;
   let alternate = false;
@@ -71,6 +74,7 @@ function luhnCheck(cardNumber) {
   return sum % 10 === 0;
 }
 
+// === Format Telegram Message ===
 function formatMessage(bin, details, cards, time, checker) {
   return `
 - 𝐂𝐂 𝐆𝐞𝐧𝐞𝐫𝐚𝐭𝐞𝐝 𝐒𝐮𝐜𝐜𝐞𝐬𝐬𝐟𝐮𝐥𝐥𝐲
@@ -88,7 +92,7 @@ ${cards.join('\n')}
 `;
 }
 
-// Telegram command: /start
+// === /start Command ===
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id,
     '💳 *Credit Card Generator*\n\nSend BIN like this:\n`/gen 557571`',
@@ -96,7 +100,7 @@ bot.onText(/\/start/, (msg) => {
   );
 });
 
-// Telegram command: /gen <bin>
+// === /gen Command ===
 bot.onText(/\/gen (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const bin = match[1].replace(/\D/g, '');
@@ -124,7 +128,7 @@ bot.onText(/\/gen (.+)/, async (msg, match) => {
       disable_web_page_preview: true
     });
   } catch (err) {
-    console.error('Error generating:', err);
+    console.error('Error generating cards:', err);
     bot.sendMessage(chatId, '⚠️ Error generating cards.');
   }
 });
