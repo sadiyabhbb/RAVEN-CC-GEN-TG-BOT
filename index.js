@@ -1,21 +1,21 @@
 require('dotenv').config();
 const express = require('express');
-const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
+const TelegramBot = require('node-telegram-bot-api');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Dummy route to keep server alive (for Render)
+// Dummy route for Render to keep server alive
 app.get('/', (req, res) => {
   res.send('🤖 Telegram Bot is Running!');
 });
 
 app.listen(PORT, () => {
-  console.log(`🌐 Server running on http://localhost:${PORT}`);
+  console.log(`🌐 Server running at http://localhost:${PORT}`);
 });
 
-// Start Telegram Bot
+// Telegram bot setup
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 
 async function getDetailedBinInfo(bin) {
@@ -23,7 +23,7 @@ async function getDetailedBinInfo(bin) {
     const response = await axios.get(`https://lookup.binlist.net/${bin}`, {
       headers: { 'Accept-Version': '3' }
     });
-    
+
     return {
       bank: response.data.bank?.name || 'UNKNOWN BANK',
       country: response.data.country?.name || 'UNKNOWN COUNTRY',
@@ -52,7 +52,7 @@ function generateValidCard(bin) {
   const month = String(Math.floor(Math.random() * 12) + 1).padStart(2, '0');
   const year = new Date().getFullYear() + Math.floor(Math.random() * 5);
   const cvv = String(Math.floor(Math.random() * 900) + 100);
-  
+
   return `\`${cardNumber}|${month}|${year}|${cvv}\``;
 }
 
@@ -88,14 +88,15 @@ ${cards.join('\n')}
 `;
 }
 
-// Telegram commands
+// Telegram command: /start
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id,
-    '💳 *Credit Card Generator*\nSend BIN: /gen 557571',
+    '💳 *Credit Card Generator*\n\nSend BIN like this:\n`/gen 557571`',
     { parse_mode: 'Markdown' }
   );
 });
 
+// Telegram command: /gen <bin>
 bot.onText(/\/gen (.+)/, async (msg, match) => {
   const chatId = msg.chat.id;
   const bin = match[1].replace(/\D/g, '');
@@ -122,9 +123,9 @@ bot.onText(/\/gen (.+)/, async (msg, match) => {
       parse_mode: 'Markdown',
       disable_web_page_preview: true
     });
-  } catch (error) {
-    console.error(error);
-    bot.sendMessage(chatId, '⚠️ Error generating cards');
+  } catch (err) {
+    console.error('Error generating:', err);
+    bot.sendMessage(chatId, '⚠️ Error generating cards.');
   }
 });
 
