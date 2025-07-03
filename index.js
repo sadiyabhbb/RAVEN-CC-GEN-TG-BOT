@@ -1,7 +1,21 @@
 require('dotenv').config();
+const express = require('express');
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Dummy route to keep server alive (for Render)
+app.get('/', (req, res) => {
+  res.send('🤖 Telegram Bot is Running!');
+});
+
+app.listen(PORT, () => {
+  console.log(`🌐 Server running on http://localhost:${PORT}`);
+});
+
+// Start Telegram Bot
 const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 
 async function getDetailedBinInfo(bin) {
@@ -74,6 +88,7 @@ ${cards.join('\n')}
 `;
 }
 
+// Telegram commands
 bot.onText(/\/start/, (msg) => {
   bot.sendMessage(msg.chat.id,
     '💳 *Credit Card Generator*\nSend BIN: /gen 557571',
@@ -93,23 +108,24 @@ bot.onText(/\/gen (.+)/, async (msg, match) => {
     const startTime = Date.now();
     const binInfo = await getDetailedBinInfo(bin.substring(0, 8));
     const cards = Array.from({ length: 10 }, () => generateValidCard(bin).replace(/`/g, ''));
-    const timeTaken = ((Date.now() - startTime)/1000).toFixed(2);
-    
+    const timeTaken = ((Date.now() - startTime) / 1000).toFixed(2);
+
     const message = formatMessage(
-      bin, 
-      binInfo, 
-      cards.map(card => `\`${card}\``), 
-      timeTaken, 
+      bin,
+      binInfo,
+      cards.map(card => `\`${card}\``),
+      timeTaken,
       "𝘼𝙍𝙅𝙐𝙉 𝙃𝙀𝙍𝙀"
     );
 
-    bot.sendMessage(chatId, message, { 
+    bot.sendMessage(chatId, message, {
       parse_mode: 'Markdown',
-      disable_web_page_preview: true 
+      disable_web_page_preview: true
     });
   } catch (error) {
+    console.error(error);
     bot.sendMessage(chatId, '⚠️ Error generating cards');
   }
 });
 
-console.log('✅ Bot Started');
+console.log('✅ Bot and Server Started');
