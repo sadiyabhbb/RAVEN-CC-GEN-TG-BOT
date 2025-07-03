@@ -1,12 +1,12 @@
 services:
   - type: web
-    name: telegram-force-join-bot
+    name: raven-cc-gen-tg-bot
     env: node
     plan: free
     buildCommand: npm install
     startCommand: npm start
     envVars:
       - key: BOT_TOKEN
-        value: your_bot_token
-      - key: CHANNEL_USERNAME
-        value: your_channel_username
+        value: 8035083791:AAEeQ-xXR73EIb-dsnxUS7UX8nr7k2wpoLo
+      - key: PORT
+        value: 3000
