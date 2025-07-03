@@ -2,127 +2,125 @@ require('dotenv').config();
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 
-const token = process.env.BOT_TOKEN;
-const bot = new TelegramBot(token, { polling: true });
+const bot = new TelegramBot(process.env.BOT_TOKEN, { polling: true });
 
-// Local BIN database fallback
-const binDatabase = {
-  '515462': { bank: 'MASTERCARD', country: 'USA', type: 'CREDIT', scheme: 'MASTERCARD', emoji: '🇺🇸' },
-  '471612': { bank: 'VISA', country: 'Germany', type: 'CREDIT', scheme: 'VISA', emoji: '🇩🇪' },
-  '401288': { bank: 'VISA', country: 'USA', type: 'DEBIT', scheme: 'VISA', emoji: '🇺🇸' }
-};
-
-async function getBinInfo(bin) {
-  const prefix = bin.substring(0, 6);
-  const cached = binDatabase[prefix];
-  if (cached) return cached;
-
+// Function to get detailed BIN information
+async function getDetailedBinInfo(bin) {
   try {
-    const response = await axios.get(`https://lookup.binlist.net/${bin}`);
+    const response = await axios.get(`https://lookup.binlist.net/${bin}`, {
+      headers: {
+        'Accept-Version': '3'
+      }
+    });
+    
     return {
-      bank: response.data.bank?.name || prefix + ' BANK',
-      country: response.data.country?.name || 'INTERNATIONAL',
-      emoji: response.data.country?.emoji || '🌍',
-      type: response.data.type?.toUpperCase() || 'UNKNOWN',
-      scheme: response.data.scheme?.toUpperCase() || 'UNKNOWN'
+      bank: response.data.bank?.name || 'UNKNOWN BANK',
+      country: response.data.country?.name || 'UNKNOWN COUNTRY',
+      emoji: response.data.country?.emoji || '🌐',
+      scheme: response.data.scheme?.toUpperCase() || 'UNKNOWN',
+      type: response.data.type?.toUpperCase() || 'UNKNOWN'
     };
-  } catch {
+  } catch (error) {
+    console.error('BIN Lookup Error:', error.message);
     return {
-      bank: prefix + ' BANK',
-      country: 'INTERNATIONAL',
-      emoji: '🌍',
-      type: 'UNKNOWN',
-      scheme: 'UNKNOWN'
+      bank: 'UNKNOWN BANK',
+      country: 'UNKNOWN COUNTRY',
+      emoji: '🌐',
+      scheme: 'UNKNOWN',
+      type: 'UNKNOWN'
     };
   }
 }
 
-function formatCard(card, index) {
-  const [number, month, year, cvc] = card.split('|');
-  const spacedNumber = number.replace(/(\d{4})(?=\d)/g, '$1 ');
-  return `${index + 1}. \`${spacedNumber} | ${month}/${year} | ${cvc}\``;
-}
-
-function createCCMessage(bin, info, cards) {
-  const currency = info.country === 'Germany' ? '€' : '$';
-  
-  return `
-✨ *CC GENERATION SUCCESS* ✨
-
-▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
-🔹 *BIN INFORMATION*
-├ Prefix: ${bin.substring(0, 6)}
-├ Bank: ${info.bank}
-├ Country: ${info.country} ${info.emoji}
-├ Type: ${info.type}
-└ Scheme: ${info.scheme}
-
-▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
-💳 *VALID TEST CARDS*
-
-${cards.map(formatCard).join('\n')}
-
-▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬
-⚠️ *IMPORTANT NOTES*
-- Format: \`CARD NUMBER | EXPIRY (MM/YY) | CVC\`
-- These are test numbers only
-- No real financial value
-`;
-}
-
-function luhnCheck(num) {
-  const arr = (num + '').split('').reverse().map(x => parseInt(x));
-  const lastDigit = arr.shift();
-  const sum = arr.reduce((acc, val, i) => 
-    (i % 2 !== 0 ? acc + val : acc + ((val * 2) % 9) || 9), 0);
-  return (sum + lastDigit) % 10 === 0;
-}
-
-function generateCard(bin) {
+// Generate valid card using Luhn algorithm
+function generateValidCard(bin) {
   let cardNumber;
   do {
-    cardNumber = bin + Math.floor(Math.random() * 1e10).toString().padStart(10, '0');
-    cardNumber = cardNumber.substring(0, 16);
+    const randomDigits = Math.floor(Math.random() * 1e10).toString().padStart(10, '0');
+    cardNumber = bin + randomDigits.substring(0, 16 - bin.length);
   } while (!luhnCheck(cardNumber));
 
   const month = String(Math.floor(Math.random() * 12) + 1).padStart(2, '0');
-  const year = String(new Date().getFullYear() + Math.floor(Math.random() * 5)).slice(-2);
-  const cvv = String(Math.floor(100 + Math.random() * 900));
+  const year = new Date().getFullYear() + Math.floor(Math.random() * 5);
+  const cvv = String(Math.floor(Math.random() * 900) + 100);
   
   return `${cardNumber}|${month}|${year}|${cvv}`;
 }
 
-bot.onText(/\/gen (.+)/, async (msg, match) => {
-  const chatId = msg.chat.id;
-  const bin = match[1].replace(/\D/g, '');
-
-  if (!/^\d{6,}$/.test(bin)) {
-    return bot.sendMessage(chatId, '⚠️ Invalid BIN format\nExample: /gen 517805');
+// Luhn algorithm checker
+function luhnCheck(cardNumber) {
+  let sum = 0;
+  let alternate = false;
+  
+  for (let i = cardNumber.length - 1; i >= 0; i--) {
+    let digit = parseInt(cardNumber.charAt(i));
+    if (alternate) {
+      digit *= 2;
+      if (digit > 9) {
+        digit = (digit % 10) + 1;
+      }
+    }
+    sum += digit;
+    alternate = !alternate;
   }
+  return sum % 10 === 0;
+}
 
-  try {
-    const cards = Array.from({ length: 5 }, () => generateCard(bin));
-    const info = await getBinInfo(bin.substring(0, 8));
-    const message = createCCMessage(bin, info, cards);
+// Format message with all details
+function formatMessage(bin, details, cards, time, checker) {
+  return `
+- 𝐂𝐂 𝐆𝐞𝐧𝐚𝐫𝐚𝐭𝐞𝐝 𝐒𝐮𝐜𝐜𝐞𝐬𝐬𝐟𝐮𝐥𝐥𝐲
+- 𝐁𝐢𝐧 - ${bin}
+- 𝐀𝐦𝐨𝐮𝐧𝐭 - ${cards.length}
 
-    await bot.sendMessage(chatId, message.text, {
-      parse_mode: 'Markdown',
-      disable_web_page_preview: true
-    });
-  } catch (err) {
-    await bot.sendMessage(chatId, '❌ Error generating cards. Please try again.');
-  }
-});
+${cards.join('\n')}
 
+- 𝗜𝗻𝗳𝗼 - 
+- 𝐁𝐚𝐧𝐤 - ${details.bank}
+- 𝐂𝐨𝐮𝐧𝐭𝐫𝐲 - ${details.country} ${details.emoji}
+
+- 𝐓𝐢𝐦𝐞: - ${time} 𝐬𝐞𝐜𝐨𝐧𝐝𝐬
+- 𝐂𝐡𝐞𝐜𝐤𝐞𝐝 - ⏤‌‌ ${checker} 🜲
+  `;
+}
+
+// Bot command handlers
 bot.onText(/\/start/, (msg) => {
-  bot.sendMessage(msg.chat.id, 
-    '💳 *CC Generator Bot*\n\n' +
+  bot.sendMessage(msg.chat.id,
+    '💳 *Credit Card Generator*\n\n' +
     'To generate test cards:\n' +
-    '`/gen 515462` - MasterCard example\n' +
-    '`/gen 401288` - Visa example\n\n' +
-    '_These numbers are for testing only_',
+    '/gen <BIN>\n\n' +
+    'Example:\n/gen 557571\n\n' +
+    'BIN must be 6-16 digits',
     { parse_mode: 'Markdown' }
   );
 });
 
-console.log('✅ Bot is running...');
+bot.onText(/\/gen (.+)/, async (msg, match) => {
+  const chatId = msg.chat.id;
+  const bin = match[1].replace(/\D/g, ''); // Remove non-digits
+
+  if (!/^\d{6,16}$/.test(bin)) {
+    return bot.sendMessage(chatId, '⚠️ Invalid BIN format (6-16 digits)\nExample: /gen 557571');
+  }
+
+  try {
+    const startTime = Date.now();
+    const binInfo = await getDetailedBinInfo(bin.substring(0, 8));
+    const cards = Array.from({ length: 10 }, () => generateValidCard(bin));
+    const timeTaken = ((Date.now() - startTime) / 1000).toFixed(2);
+    const checkerName = "X20 Raven"; // Set the checker's name
+
+    const message = formatMessage(bin, binInfo, cards, timeTaken, checkerName);
+    
+    bot.sendMessage(chatId, message, { 
+      parse_mode: 'Markdown',
+      disable_web_page_preview: true 
+    });
+  } catch (error) {
+    console.error('Generation Error:', error);
+    bot.sendMessage(chatId, '⚠️ Error generating cards. Please try again.');
+  }
+});
+
+console.log('✅ Bot is running and ready to generate cards...');
